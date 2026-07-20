@@ -88,7 +88,7 @@ void OnTimer()
       return;
    }
 
-   datetime now = TimeCurrent();
+   datetime now = TimeLocal();
    
    // 1. Check if the active position has expired
    CheckAndCloseExpiredTrades();
@@ -164,8 +164,14 @@ double GetClosedPositionProfit(ulong ticket)
 //+------------------------------------------------------------------+
 void SendTickAndCheckSignals()
 {
-   string url = ServerUrl + "/api/mt5/tick";
-   string headers = "Content-Type: application/json\\r\\n";
+   // Trim trailing slash from ServerUrl if it exists
+   string clean_url = ServerUrl;
+   if(StringLen(clean_url) > 0 && StringSubstr(clean_url, StringLen(clean_url) - 1, 1) == "/")
+   {
+      clean_url = StringSubstr(clean_url, 0, StringLen(clean_url) - 1);
+   }
+   string url = clean_url + "/api/mt5/tick";
+   string headers = "Content-Type: application/json\\r\\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\\r\\n";
    
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    
@@ -175,7 +181,8 @@ void SendTickAndCheckSignals()
    char result_data[];
    string result_headers;
    
-   StringToCharArray(body, post_data);
+   // Copy exactly StringLen(body) characters to exclude trailing null terminator
+   StringToCharArray(body, post_data, 0, StringLen(body));
    
    int res = WebRequest("POST", url, headers, 3000, post_data, result_data, result_headers);
    
@@ -209,8 +216,13 @@ void SendTickAndCheckSignals()
 //+------------------------------------------------------------------+
 void ReportTradeClosed(ulong ticket, double price, double profit)
 {
-   string url = ServerUrl + "/api/mt5/tick";
-   string headers = "Content-Type: application/json\\r\\n";
+   string clean_url = ServerUrl;
+   if(StringLen(clean_url) > 0 && StringSubstr(clean_url, StringLen(clean_url) - 1, 1) == "/")
+   {
+      clean_url = StringSubstr(clean_url, 0, StringLen(clean_url) - 1);
+   }
+   string url = clean_url + "/api/mt5/tick";
+   string headers = "Content-Type: application/json\\r\\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\\r\\n";
    
    string body = "{\\"asset\\":\\"" + _Symbol + "\\",\\"price\\":" + DoubleToString(price, _Digits) + 
                  ",\\"ticket\\":" + IntegerToString(ticket) + 
@@ -220,7 +232,7 @@ void ReportTradeClosed(ulong ticket, double price, double profit)
    char result_data[];
    string result_headers;
    
-   StringToCharArray(body, post_data);
+   StringToCharArray(body, post_data, 0, StringLen(body));
    WebRequest("POST", url, headers, 3000, post_data, result_data, result_headers);
 }
 
@@ -229,8 +241,13 @@ void ReportTradeClosed(ulong ticket, double price, double profit)
 //+------------------------------------------------------------------+
 void ReportTradeOpened(ulong ticket, double price)
 {
-   string url = ServerUrl + "/api/mt5/tick";
-   string headers = "Content-Type: application/json\\r\\n";
+   string clean_url = ServerUrl;
+   if(StringLen(clean_url) > 0 && StringSubstr(clean_url, StringLen(clean_url) - 1, 1) == "/")
+   {
+      clean_url = StringSubstr(clean_url, 0, StringLen(clean_url) - 1);
+   }
+   string url = clean_url + "/api/mt5/tick";
+   string headers = "Content-Type: application/json\\r\\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\\r\\n";
    
    string body = "{\\"asset\\":\\"" + _Symbol + "\\",\\"price\\":" + DoubleToString(price, _Digits) + 
                  ",\\"ticket\\":" + IntegerToString(ticket) + 
@@ -240,7 +257,7 @@ void ReportTradeOpened(ulong ticket, double price)
    char result_data[];
    string result_headers;
    
-   StringToCharArray(body, post_data);
+   StringToCharArray(body, post_data, 0, StringLen(body));
    WebRequest("POST", url, headers, 3000, post_data, result_data, result_headers);
 }
 

@@ -428,6 +428,16 @@ function resolvePendingSimulatedTrades(closePrice: number) {
 // Manage HTTP API and WebSocket upgrade
 app.use(express.json());
 
+// Handle JSON syntax parsing errors gracefully with logs
+app.use((err: any, req: any, res: any, next: any) => {
+  if (err instanceof SyntaxError && 'status' in err && err.status === 400 && 'body' in err) {
+    console.error("JSON parsing error:", err.message);
+    addLog("error", `[Server] ได้รับข้อมูล JSON ที่ไม่ถูกต้องจาก EA (อาจมีรหัส Null / อักขระตกหล่น): ${err.message}`);
+    return res.status(400).json({ error: "Invalid JSON format" });
+  }
+  next();
+});
+
 // MT5 Ticking & Signal Webhook Endpoint
 app.post("/api/mt5/tick", (req, res) => {
   const { asset, price, ticket, action, profit } = req.body;
@@ -445,7 +455,16 @@ app.post("/api/mt5/tick", (req, res) => {
 
   // Map asset symbol if needed (e.g. "EURUSD.m" to "EURUSD")
   const normAsset = asset.replace(/[^A-Z]/gi, "").substring(0, 6).toUpperCase();
-  const supportedAsset = SUPPORTED_ASSETS.find(a => normAsset.includes(a.id)) || SUPPORTED_ASSETS[0];
+  let supportedAsset = SUPPORTED_ASSETS.find(a => normAsset.includes(a.id) || a.id.includes(normAsset));
+  
+  // Robust gold mapping fallback
+  if (!supportedAsset && (normAsset.includes("GOLD") || normAsset.includes("XAU"))) {
+    supportedAsset = SUPPORTED_ASSETS.find(a => a.id === "XAUUSD");
+  }
+  
+  if (!supportedAsset) {
+    supportedAsset = SUPPORTED_ASSETS[0];
+  }
 
   const history = getOrCreateCandleHistory(supportedAsset.id);
   const now = Math.floor(Date.now() / 1000);
