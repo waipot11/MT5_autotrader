@@ -425,15 +425,30 @@ function resolvePendingSimulatedTrades(closePrice: number) {
   }
 }
 
-// Manage HTTP API and WebSocket upgrade
-app.use(express.json());
-
-// Handle JSON syntax parsing errors gracefully with logs
-app.use((err: any, req: any, res: any, next: any) => {
-  if (err instanceof SyntaxError && 'status' in err && err.status === 400 && 'body' in err) {
-    console.error("JSON parsing error:", err.message);
-    addLog("error", `[Server] ได้รับข้อมูล JSON ที่ไม่ถูกต้องจาก EA (อาจมีรหัส Null / อักขระตกหล่น): ${err.message}`);
-    return res.status(400).json({ error: "Invalid JSON format" });
+// Manage HTTP API and WebSocket upgrade - safely parse and clean JSON body
+app.use(express.text({ type: "application/json" }));
+app.use((req: any, res: any, next: any) => {
+  if (typeof req.body === "string" && req.body.trim()) {
+    try {
+      // Clean null bytes and any non-printable/trailing garbage
+      let cleanBody = req.body.replace(/\0/g, "").trim();
+      
+      // Extract from the first '{' to the last '}' to handle any trailing garbage characters
+      const firstBrace = cleanBody.indexOf('{');
+      const lastBrace = cleanBody.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
+        cleanBody = cleanBody.substring(firstBrace, lastBrace + 1);
+      }
+      
+      req.body = JSON.parse(cleanBody);
+    } catch (err: any) {
+      console.error("Failed to parse cleaned JSON:", err.message, "Original body length:", req.body.length);
+      addLog("error", `[Server] ไม่สามารถแปลง JSON จาก EA ได้: ${err.message} (ข้อมูลดิบ: ${req.body.substring(0, 100)})`);
+      return res.status(400).json({ error: "Invalid JSON format" });
+    }
+  } else if (typeof req.body !== "object") {
+    // Fallback if body is empty or other type
+    req.body = {};
   }
   next();
 });
