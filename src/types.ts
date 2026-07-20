@@ -62,6 +62,7 @@ export interface BotStats {
   losses: number;
   netProfit: number;
   currentStep: number;
+  currency?: string;
 }
 
 export interface ConnectionState {

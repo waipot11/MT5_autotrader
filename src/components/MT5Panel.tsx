@@ -159,7 +159,7 @@ double GetClosedPositionProfit(ulong ticket)
    return profit;
 }
 
-//+------------------------------------------------------------------+
+///+------------------------------------------------------------------+
 //| Send tick data to server and process response                    |
 //+------------------------------------------------------------------+
 void SendTickAndCheckSignals()
@@ -174,8 +174,12 @@ void SendTickAndCheckSignals()
    string headers = "Content-Type: application/json\\r\\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\\r\\n";
    
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   string currency = AccountInfoString(ACCOUNT_CURRENCY);
    
-   string body = "{\\"asset\\":\\"" + _Symbol + "\\",\\"price\\":" + DoubleToString(bid, _Digits) + "}";
+   string body = "{\\"asset\\":\\"" + _Symbol + "\\",\\"price\\":" + DoubleToString(bid, _Digits) + 
+                 ",\\"balance\\":" + DoubleToString(balance, 2) + 
+                 ",\\"currency\\":\\"" + currency + "\\"}";
    
    char post_data[];
    char result_data[];
@@ -224,10 +228,15 @@ void ReportTradeClosed(ulong ticket, double price, double profit)
    string url = clean_url + "/api/mt5/tick";
    string headers = "Content-Type: application/json\\r\\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\\r\\n";
    
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   string currency = AccountInfoString(ACCOUNT_CURRENCY);
+   
    string body = "{\\"asset\\":\\"" + _Symbol + "\\",\\"price\\":" + DoubleToString(price, _Digits) + 
                  ",\\"ticket\\":" + IntegerToString(ticket) + 
-                 ",\\"action\\":\\"trade_closed\\",\\"profit\\":" + DoubleToString(profit, 2) + "}";
-                 
+                 ",\\"action\\":\\"trade_closed\\",\\"profit\\":" + DoubleToString(profit, 2) +
+                 ",\\"balance\\":" + DoubleToString(balance, 2) + 
+                 ",\\"currency\\":\\"" + currency + "\\"}";
+                  
    char post_data[];
    char result_data[];
    string result_headers;
@@ -249,10 +258,14 @@ void ReportTradeOpened(ulong ticket, double price)
    string url = clean_url + "/api/mt5/tick";
    string headers = "Content-Type: application/json\\r\\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\\r\\n";
    
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   string currency = AccountInfoString(ACCOUNT_CURRENCY);
+   
    string body = "{\\"asset\\":\\"" + _Symbol + "\\",\\"price\\":" + DoubleToString(price, _Digits) + 
                  ",\\"ticket\\":" + IntegerToString(ticket) + 
-                 ",\\"action\\":\\"trade_opened\\"}";
-                 
+                 ",\\"action\\":\\"trade_opened\\",\\"balance\\":" + DoubleToString(balance, 2) + 
+                 ",\\"currency\\":\\"" + currency + "\\"}";
+                  
    char post_data[];
    char result_data[];
    string result_headers;

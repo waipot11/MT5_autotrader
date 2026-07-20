@@ -17,7 +17,7 @@ export default function App() {
   const [settings, setSettings] = useState<BotSettings>({
     isActive: false,
     assetId: 'XAUUSD',
-    tradeAmount: 0.1,
+    tradeAmount: 0.01,
     martingaleMultiplier: 2.5,
     maxMartingaleSteps: 3,
     emaShort: 5,
@@ -40,6 +40,7 @@ export default function App() {
     losses: 0,
     netProfit: 0,
     currentStep: 1,
+    currency: 'USD',
   });
 
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -192,6 +193,14 @@ export default function App() {
     return `${Math.round((stats.wins / stats.totalTrades) * 100)}%`;
   };
 
+  const formatCurrency = (val: number) => {
+    const symbol = stats.currency === 'THB' ? '฿' : (stats.currency === 'USD' ? '$' : (stats.currency || '$'));
+    const isNegative = val < 0;
+    const absVal = Math.abs(val);
+    const formatted = absVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `${isNegative ? '-' : ''}${symbol}${formatted}`;
+  };
+
   return (
     <div className="min-h-screen bg-[#0b0e14] text-slate-100 flex flex-col selection:bg-indigo-500/30">
       {/* Top Navigation Bar */}
@@ -245,8 +254,8 @@ export default function App() {
           <MetricCard
             id="metric_balance"
             title={settings.mode === 'simulation' ? 'จำลองบาลานซ์ (Balance)' : 'กำไร/ยอดบาลานซ์ MT5'}
-            value={`$${stats.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            subtitle={settings.mode === 'simulation' ? 'โหมดจำลอง (Demo)' : 'คำนวณผ่านกำไร/ขาดทุนสะสมใน EA'}
+            value={formatCurrency(stats.balance)}
+            subtitle={settings.mode === 'simulation' ? 'โหมดจำลอง (Demo)' : `ดึงบัญชีจริง (${stats.currency || 'USD'})`}
             icon={Wallet}
             color="indigo"
           />
@@ -261,7 +270,7 @@ export default function App() {
           <MetricCard
             id="metric_netprofit"
             title="กำไรสุทธิ (Net Profit)"
-            value={`${stats.netProfit >= 0 ? '+' : ''}$${stats.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            value={(stats.netProfit >= 0 ? '+' : '') + formatCurrency(stats.netProfit)}
             subtitle="หักลบค่าคอมมิชชั่น 10%"
             icon={Activity}
             color={stats.netProfit >= 0 ? 'emerald' : 'rose'}
@@ -278,7 +287,7 @@ export default function App() {
             id="metric_currentstep"
             title="ระดับตัวคูณ (Martingale)"
             value={`ไม้ที่ ${stats.currentStep}`}
-            subtitle={`ขนาดล็อตถัดไป ${(settings.tradeAmount * Math.pow(settings.martingaleMultiplier, stats.currentStep - 1)).toFixed(2)} Lot`}
+            subtitle={`ขนาดล็อตถัดไป ${(settings.tradeAmount * Math.pow(settings.martingaleMultiplier, stats.currentStep - 1)).toFixed(settings.mode === 'mt5' ? 2 : 1)} ${settings.mode === 'mt5' ? 'Lot' : 'USD'}`}
             icon={AlertTriangle}
             color={stats.currentStep > 1 ? 'amber' : 'slate'}
           />

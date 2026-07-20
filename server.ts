@@ -19,7 +19,7 @@ const wss = new WebSocketServer({ noServer: true });
 let botSettings: BotSettings = {
   isActive: false,
   assetId: "XAUUSD",
-  tradeAmount: 0.1,
+  tradeAmount: 0.01,
   martingaleMultiplier: 2.5,
   maxMartingaleSteps: 3,
   emaShort: 5,
@@ -41,7 +41,8 @@ let botStats: BotStats = {
   wins: 0,
   losses: 0,
   netProfit: 0,
-  currentStep: 1
+  currentStep: 1,
+  currency: "USD"
 };
 
 // Daily risk limit states
@@ -455,7 +456,7 @@ app.use((req: any, res: any, next: any) => {
 
 // MT5 Ticking & Signal Webhook Endpoint
 app.post("/api/mt5/tick", (req, res) => {
-  const { asset, price, ticket, action, profit } = req.body;
+  const { asset, price, ticket, action, profit, balance, currency } = req.body;
   if (!asset || typeof price !== "number") {
     return res.status(400).json({ error: "Invalid parameters" });
   }
@@ -466,6 +467,24 @@ app.post("/api/mt5/tick", (req, res) => {
     connectionState = { status: "connected", error: null };
     broadcast({ type: "connection", data: connectionState });
     addLog("success", `[MT5] EA เชื่อมต่อสำเร็จสำหรับสินทรัพย์ ${asset}`);
+  }
+
+  // Sync real-time balance and currency from MT5 EA if provided
+  let statsUpdated = false;
+  if (typeof balance === "number") {
+    if (botStats.balance !== balance) {
+      botStats.balance = balance;
+      statsUpdated = true;
+    }
+  }
+  if (typeof currency === "string" && currency) {
+    if (botStats.currency !== currency) {
+      botStats.currency = currency;
+      statsUpdated = true;
+    }
+  }
+  if (statsUpdated) {
+    broadcast({ type: "stats", data: botStats });
   }
 
   // Map asset symbol if needed (e.g. "EURUSD.m" to "EURUSD")
@@ -640,7 +659,8 @@ app.post("/api/mt5/tick", (req, res) => {
         
         dailyProfitLossAccumulated += profit;
         
-        addLog("success", `[MT5] ออร์เดอร์ปิดแล้ว ชนะ! กำไร +$${profit.toFixed(2)} (รีเซ็ต Martingale | สะสมวันนี้ $${dailyProfitLossAccumulated.toFixed(2)})`);
+        const cur = botStats.currency || "USD";
+        addLog("success", `[MT5] ออร์เดอร์ปิดแล้ว ชนะ! กำไร +${profit.toFixed(2)} ${cur} (รีเซ็ต Martingale | สะสมวันนี้ ${dailyProfitLossAccumulated.toFixed(2)} ${cur})`);
       } else if (profit < 0) {
         botStats.losses++;
         botStats.netProfit += profit;
@@ -648,12 +668,13 @@ app.post("/api/mt5/tick", (req, res) => {
         
         dailyProfitLossAccumulated += profit;
         
+        const cur = botStats.currency || "USD";
         if (botStats.currentStep >= botSettings.maxMartingaleSteps) {
-          addLog("error", `[MT5] ออร์เดอร์ปิดแล้ว แพ้... ขาดทุน $${Math.abs(profit).toFixed(2)} (ครบรอบ Martingale เริ่มต้นใหม่ไม้ 1 | สะสมวันนี้ $${dailyProfitLossAccumulated.toFixed(2)})`);
+          addLog("error", `[MT5] ออร์เดอร์ปิดแล้ว แพ้... ขาดทุน ${Math.abs(profit).toFixed(2)} ${cur} (ครบรอบ Martingale เริ่มต้นใหม่ไม้ 1 | สะสมวันนี้ ${dailyProfitLossAccumulated.toFixed(2)} ${cur})`);
           botStats.currentStep = 1;
         } else {
           botStats.currentStep++;
-          addLog("info", `[MT5] ออร์เดอร์ปิดแล้ว แพ้... ขาดทุน $${Math.abs(profit).toFixed(2)} (เพิ่ม Martingale เป็นไม้ที่ ${botStats.currentStep} | สะสมวันนี้ $${dailyProfitLossAccumulated.toFixed(2)})`);
+          addLog("info", `[MT5] ออร์เดอร์ปิดแล้ว แพ้... ขาดทุน ${Math.abs(profit).toFixed(2)} ${cur} (เพิ่ม Martingale เป็นไม้ที่ ${botStats.currentStep} | สะสมวันนี้ ${dailyProfitLossAccumulated.toFixed(2)} ${cur})`);
         }
       } else {
         addLog("info", `[MT5] ออร์เดอร์ปิดแล้ว เสมอ/คืนทุน`);

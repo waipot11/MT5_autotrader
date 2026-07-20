@@ -93,16 +93,19 @@ export const BotControls: React.FC<BotControlsProps> = ({
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-slate-400 flex items-center gap-1">
             <DollarSign className="w-3.5 h-3.5 text-slate-500" />
-            จำนวนเงินเริ่มต้นต่อไม้ ($)
+            {settings.mode === 'mt5' ? 'ล็อตเริ่มต้น (Base Lot)' : 'จำนวนเงินเริ่มต้นต่อไม้ ($)'}
           </label>
           <input
             disabled={settings.isActive}
             type="number"
-            min="1"
-            max="1000"
-            step="0.5"
+            min={settings.mode === 'mt5' ? 0.01 : 1}
+            max={settings.mode === 'mt5' ? 10.0 : 1000}
+            step={settings.mode === 'mt5' ? 0.01 : 0.5}
             value={settings.tradeAmount}
-            onChange={(e) => onUpdate({ tradeAmount: Math.max(1, parseFloat(e.target.value) || 1) })}
+            onChange={(e) => {
+              const minVal = settings.mode === 'mt5' ? 0.01 : 1;
+              onUpdate({ tradeAmount: Math.max(minVal, parseFloat(e.target.value) || minVal) });
+            }}
             className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-50 transition-colors"
           />
         </div>
