@@ -1,0 +1,6 @@
+{
+  "name": "IQ Option Auto Trading Bot",
+  "description": "ระบบบอทเทรด IQ Option อัตโนมัติด้วยกลยุทธ์เส้น EMA 5/20 ตัดกัน พร้อมระบบบริการจัดการเงินแบบ Martingale",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
