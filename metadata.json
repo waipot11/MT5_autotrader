@@ -1,6 +1,6 @@
 {
-  "name": "IQ Option Auto Trading Bot",
-  "description": "ระบบบอทเทรด IQ Option อัตโนมัติด้วยกลยุทธ์เส้น EMA 5/20 ตัดกัน พร้อมระบบบริการจัดการเงินแบบ Martingale",
+  "name": "XM MT5 Gold Auto-Trader Network",
+  "description": "ระบบกลุ่มบอทเทรดทองคำ MT5 (XAUUSD) อัจฉริยะแบบกลุ่มเครือข่าย พร้อมระบบตั้งค่ารายบุคคลและแผงควบคุมหลังบ้านแยกสิทธิ์ตรวจสอบยอดเงินฝากพาร์ทเนอร์ XM 3,500 บาท",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

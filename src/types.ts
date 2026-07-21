@@ -70,6 +70,20 @@ export interface ConnectionState {
   error: string | null;
 }
 
+export interface UserSession {
+  username: string; // MT5 Account number / Username
+  fullName: string;
+  depositVerified: boolean; // Whether they deposited >= 3,500 THB, approved by Admin or auto-mocked
+  registeredAt: string;
+  lastActiveAt?: string;
+  settings: BotSettings;
+  stats: BotStats;
+  trades: Trade[];
+  logs: LogEntry[];
+  dailyTradesCount: number;
+  dailyProfitLossAccumulated: number;
+}
+
 export interface Asset {
   id: string;
   name: string;

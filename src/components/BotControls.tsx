@@ -110,39 +110,15 @@ export const BotControls: React.FC<BotControlsProps> = ({
           />
         </div>
 
-        {/* Martingale Multiplier */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-slate-400 flex items-center gap-1">
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-            ตัวคูณทบเงิน Martingale
-          </label>
-          <input
-            disabled={settings.isActive}
-            type="number"
-            min="1.1"
-            max="5"
-            step="0.1"
-            value={settings.martingaleMultiplier}
-            onChange={(e) => onUpdate({ martingaleMultiplier: Math.max(1.1, parseFloat(e.target.value) || 2.5) })}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-50 transition-colors"
-          />
-        </div>
-
-        {/* Max Martingale Steps */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-slate-400 flex items-center gap-1">
-            <Settings className="w-3.5 h-3.5 text-slate-500" />
-            จำนวนไม้มาร์ติงเกลสูงสุด (ไม้)
-          </label>
-          <input
-            disabled={settings.isActive}
-            type="number"
-            min="1"
-            max="6"
-            value={settings.maxMartingaleSteps}
-            onChange={(e) => onUpdate({ maxMartingaleSteps: Math.max(1, parseInt(e.target.value, 10) || 3) })}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-slate-200 outline-none focus:border-indigo-500 disabled:opacity-50 transition-colors"
-          />
+        {/* Martingale System Status */}
+        <div className="col-span-1 sm:col-span-2 p-3.5 rounded-xl bg-indigo-500/5 border border-indigo-500/15 flex flex-col gap-1.5">
+          <div className="flex items-center gap-2 text-xs font-bold text-indigo-400">
+            <AlertTriangle className="w-4 h-4 text-indigo-400 shrink-0" />
+            สถานะระบบ Martingale: ปิดใช้งาน (Fixed Lot)
+          </div>
+          <p className="text-[10px] text-slate-400 leading-normal">
+            ระบบบริหารเงินทุนแบบ Martingale ถูกยกเลิกเพื่อลดความเสี่ยงในการล้างพอร์ตตามคำขอ โดยระบบจะทำการออกออร์เดอร์ทุกไม้ด้วยขนาดล็อตเริ่มต้นที่กำหนด (เช่น 0.01 Lot) คงที่ตลอดทุกรอบการเทรดเพื่อความปลอดภัยขั้นสูงสุด
+          </p>
         </div>
 
         {/* EMA Technical Periods */}
@@ -287,23 +263,23 @@ export const BotControls: React.FC<BotControlsProps> = ({
         </div>
       </div>
 
-      {/* Dynamic Martingale cost preview */}
-      <div className="bg-slate-950/80 rounded-lg p-3 border border-slate-800 text-xxs text-slate-400 flex flex-col gap-1">
+      {/* Target Profit per Round preview */}
+      <div className="bg-slate-950/80 rounded-lg p-3 border border-slate-800 text-xxs text-slate-400 flex flex-col gap-1.5">
         <div className="text-xs font-semibold text-slate-300 border-b border-slate-800/50 pb-1 mb-1">
-          การบริหารเงินทุนมาร์ติงเกลแบบเรียลไทม์:
+          เป้าหมายและขนาดล็อตต่อรอบการทำงาน (Risk Management):
         </div>
-        {Array.from({ length: settings.maxMartingaleSteps }).map((_, i) => {
-          const tradeAmt = settings.tradeAmount * Math.pow(settings.martingaleMultiplier, i);
-          const accumulated = Array.from({ length: i + 1 })
-            .map((_, idx) => settings.tradeAmount * Math.pow(settings.martingaleMultiplier, idx))
-            .reduce((sum, val) => sum + val, 0);
-          return (
-            <div key={i} className="flex justify-between font-mono">
-              <span>ไม้ที่ {i + 1}: <span className="text-slate-300">${tradeAmt.toFixed(2)}</span></span>
-              <span>ใช้ทุนรวมสะสม: <span className="text-amber-500">${accumulated.toFixed(2)}</span></span>
-            </div>
-          );
-        })}
+        <div className="flex justify-between items-center font-mono py-0.5">
+          <span>ขนาดล็อตเริ่มต้นต่อไม้ (Base Lot):</span>
+          <span className="text-indigo-400 font-bold">{settings.tradeAmount.toFixed(2)} Lot</span>
+        </div>
+        <div className="flex justify-between items-center font-mono py-0.5">
+          <span>เป้าหมายกำไรต่อวัน / ต่อรอบ (TP):</span>
+          <span className="text-emerald-400 font-bold">฿1,500.00 บาท (≈ $44.12 USD)</span>
+        </div>
+        <div className="flex justify-between items-center font-mono py-0.5">
+          <span>ขีดจำกัดตัดขาดทุนรายวัน (SL):</span>
+          <span className="text-rose-400 font-bold">${settings.dailyLossLimit ?? 50.0} USD</span>
+        </div>
       </div>
 
       {/* Activation Button */}

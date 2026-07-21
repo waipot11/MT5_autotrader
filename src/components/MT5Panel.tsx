@@ -43,9 +43,9 @@ CTrade trade;
 // Input parameters
 input string   ServerUrl           = "${currentOrigin}"; // Server URL
 input double   LotSize             = 0.01;                  // Base Lot Size
-input bool     UseMartingale       = true;                  // Use Martingale multiplier
-input double   MartingaleMultiplier= 2.5;                   // Martingale Multiplier
-input int      MaxMartingaleSteps  = 3;                     // Max Martingale Steps
+input bool     UseMartingale       = false;                 // Use Martingale multiplier (Set to false)
+input double   MartingaleMultiplier= 1.0;                   // Martingale Multiplier
+input int      MaxMartingaleSteps  = 1;                     // Max Martingale Steps
 input int      TradeExpirySeconds  = 60;                    // Trade Expiry (60s to simulate Binary Options)
 input double   TakeProfitPips      = 0.0;                   // Take Profit in Pips (0 = None)
 input double   StopLossPips        = 0.0;                   // Stop Loss in Pips (0 = None)
@@ -176,10 +176,11 @@ void SendTickAndCheckSignals()
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
    string currency = AccountInfoString(ACCOUNT_CURRENCY);
+   long login = AccountInfoInteger(ACCOUNT_LOGIN);
    
    string body = "{\\"asset\\":\\"" + _Symbol + "\\",\\"price\\":" + DoubleToString(bid, _Digits) + 
                  ",\\"balance\\":" + DoubleToString(balance, 2) + 
-                 ",\\"currency\\":\\"" + currency + "\\"}";
+                 ",\\"currency\\":\\"" + currency + "\\",\\"login\\":\\"" + IntegerToString(login) + "\\"}";
    
    char post_data[];
    char result_data[];
@@ -230,12 +231,13 @@ void ReportTradeClosed(ulong ticket, double price, double profit)
    
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
    string currency = AccountInfoString(ACCOUNT_CURRENCY);
+   long login = AccountInfoInteger(ACCOUNT_LOGIN);
    
    string body = "{\\"asset\\":\\"" + _Symbol + "\\",\\"price\\":" + DoubleToString(price, _Digits) + 
                  ",\\"ticket\\":" + IntegerToString(ticket) + 
                  ",\\"action\\":\\"trade_closed\\",\\"profit\\":" + DoubleToString(profit, 2) +
                  ",\\"balance\\":" + DoubleToString(balance, 2) + 
-                 ",\\"currency\\":\\"" + currency + "\\"}";
+                 ",\\"currency\\":\\"" + currency + "\\",\\"login\\":\\"" + IntegerToString(login) + "\\"}";
                   
    char post_data[];
    char result_data[];
@@ -260,11 +262,12 @@ void ReportTradeOpened(ulong ticket, double price)
    
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
    string currency = AccountInfoString(ACCOUNT_CURRENCY);
+   long login = AccountInfoInteger(ACCOUNT_LOGIN);
    
    string body = "{\\"asset\\":\\"" + _Symbol + "\\",\\"price\\":" + DoubleToString(price, _Digits) + 
                  ",\\"ticket\\":" + IntegerToString(ticket) + 
                  ",\\"action\\":\\"trade_opened\\",\\"balance\\":" + DoubleToString(balance, 2) + 
-                 ",\\"currency\\":\\"" + currency + "\\"}";
+                 ",\\"currency\\":\\"" + currency + "\\",\\"login\\":\\"" + IntegerToString(login) + "\\"}";
                   
    char post_data[];
    char result_data[];

@@ -11,15 +11,41 @@ import { BotControls } from './components/BotControls';
 import { TradingChart } from './components/TradingChart';
 import { ActivityLogs } from './components/ActivityLogs';
 import { MT5Panel } from './components/MT5Panel';
-import { Wallet, Award, Activity, RotateCcw, AlertTriangle, ShieldCheck, HelpCircle } from 'lucide-react';
+import { AuthPanel } from './components/AuthPanel';
+import { AdminPanel } from './components/AdminPanel';
+import { Wallet, Award, Activity, RotateCcw, AlertTriangle, ShieldCheck, HelpCircle, LogOut, ExternalLink } from 'lucide-react';
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<{ username: string; fullName: string; depositVerified: boolean } | null>(() => {
+    const saved = localStorage.getItem('xm_user');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
+
+  const [impersonatingUser, setImpersonatingUser] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'client' | 'admin'>(() => {
+    const saved = localStorage.getItem('xm_user');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.username === 'admin') return 'admin';
+      } catch (e) {}
+    }
+    return 'client';
+  });
+
   const [settings, setSettings] = useState<BotSettings>({
     isActive: false,
     assetId: 'XAUUSD',
     tradeAmount: 0.01,
-    martingaleMultiplier: 2.5,
-    maxMartingaleSteps: 3,
+    martingaleMultiplier: 1.0,
+    maxMartingaleSteps: 1,
     emaShort: 5,
     emaLong: 20,
     accountType: 'practice',
@@ -29,7 +55,7 @@ export default function App() {
     dailyTradeLimit: 5,
     startHour: '13:00',
     endHour: '22:00',
-    dailyProfitTarget: 100.0,
+    dailyProfitTarget: 1500.0,
     dailyLossLimit: 50.0,
   });
 
@@ -72,6 +98,15 @@ export default function App() {
       setClientConnected(true);
       console.log('Backend WebSocket connected!');
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      
+      // Auto-authenticate socket connection if user session exists
+      const saved = localStorage.getItem('xm_user');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          ws.send(JSON.stringify({ type: 'auth', data: { username: parsed.username } }));
+        } catch (e) {}
+      }
     };
 
     ws.onmessage = (event) => {
@@ -93,6 +128,16 @@ export default function App() {
             break;
           case 'stats':
             setStats(data);
+            break;
+          case 'deposit_status':
+            setCurrentUser((prev) => {
+              if (prev) {
+                const updated = { ...prev, depositVerified: data.verified };
+                localStorage.setItem('xm_user', JSON.stringify(updated));
+                return updated;
+              }
+              return prev;
+            });
             break;
           case 'candles':
             setCandles(data);
@@ -161,6 +206,27 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (clientConnected && currentUser) {
+      const authUser = impersonatingUser || currentUser.username;
+      sendEvent('auth', { username: authUser });
+    }
+  }, [currentUser, clientConnected, impersonatingUser]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('xm_user');
+    setCurrentUser(null);
+    setImpersonatingUser(null);
+    setViewMode('client');
+    if (socketRef.current) {
+      socketRef.current.close();
+    }
+    // Automatically trigger reconnect as guest fallback
+    setTimeout(() => {
+      connectWebSocket();
+    }, 100);
+  };
+
   // Helper to send events to server
   const sendEvent = (type: string, data?: any) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -201,11 +267,43 @@ export default function App() {
     return `${isNegative ? '-' : ''}${symbol}${formatted}`;
   };
 
+  if (!currentUser) {
+    return (
+      <AuthPanel
+        id="xm_auth_gate"
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          localStorage.setItem('xm_user', JSON.stringify(user));
+          if (user.username === 'admin') {
+            setViewMode('admin');
+          } else {
+            setViewMode('client');
+          }
+        }}
+      />
+    );
+  }
+
+  if (viewMode === 'admin' && currentUser.username === 'admin') {
+    return (
+      <AdminPanel
+        id="xm_admin_dashboard"
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        onSelectUserImpersonate={(username) => {
+          setImpersonatingUser(username);
+          setViewMode('client');
+        }}
+        onBackToClient={() => setViewMode('client')}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0b0e14] text-slate-100 flex flex-col selection:bg-indigo-500/30">
       {/* Top Navigation Bar */}
       <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
               <Activity className="w-5 h-5 animate-pulse" />
@@ -214,33 +312,64 @@ export default function App() {
               <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5 font-sans">
                 MT5 EA GOLD AUTO-TRADER
                 <span className="text-[10px] bg-indigo-500/10 text-indigo-400 font-medium px-1.5 py-0.5 rounded tracking-wide font-mono">
-                  v3.0
+                  v3.1
                 </span>
               </h1>
               <p className="text-[10px] text-slate-500 font-medium">
-                ระบบบอทเทรดทองคำอัจฉริยะ (Indicator EMA Cross + Martingale + V98.3 Golden Trend Logic)
+                ระบบบอทเทรดทองคำอัจฉริยะ (Indicator EMA Cross + Fixed Lot + V98.3 Golden Trend Logic)
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3 w-full sm:w-auto">
+            {/* User Profile Badge */}
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl text-xxs font-medium text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+              <span>
+                {currentUser.username === 'admin' && impersonatingUser
+                  ? `โหมดทดสอบ: #${impersonatingUser}`
+                  : `พอร์ต: ${currentUser.fullName} (#${currentUser.username})`}
+              </span>
+              {currentUser.username !== 'admin' && (
+                <span className={`px-1.5 py-0.5 rounded font-bold ${
+                  currentUser.depositVerified 
+                    ? 'bg-emerald-500/10 text-emerald-400' 
+                    : 'bg-rose-500/10 text-rose-400'
+                }`}>
+                  {currentUser.depositVerified ? 'Active' : 'Inactive'}
+                </span>
+              )}
+            </div>
+
+            {/* Admin toggle if authorized */}
+            {currentUser.username === 'admin' && (
+              <button
+                onClick={() => {
+                  setImpersonatingUser(null);
+                  setViewMode('admin');
+                }}
+                className="flex items-center gap-1 bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-xxs font-bold transition-all cursor-pointer"
+              >
+                กลับแผงแอดมิน
+              </button>
+            )}
+
             {/* Server Status Icon */}
-            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-md text-[10px]">
-              <span className={`w-1.5 h-1.5 rounded-full ${clientConnected ? 'bg-emerald-500 active-pulse' : 'bg-rose-500'}`}></span>
-              <span className="text-slate-400 font-medium select-none uppercase tracking-wide">
-                เซิร์ฟเวอร์บอท: {clientConnected ? 'ออนไลน์' : 'ออฟไลน์'}
+            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2.5 py-1.5 rounded-xl text-[10px]">
+              <span className={`w-1.5 h-1.5 rounded-full ${clientConnected ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+              <span className="text-slate-400 font-medium uppercase tracking-wide">
+                เซิร์ฟเวอร์: {clientConnected ? 'ออนไลน์' : 'ออฟไลน์'}
               </span>
             </div>
 
-            {/* Global Reset */}
+            {/* Logout button */}
             <button
-              id="reset_all_stats_button"
-              type="button"
-              onClick={handleClearLogs}
-              className="flex items-center gap-1 bg-slate-900 hover:bg-slate-800 border border-slate-800 px-3 py-1.5 rounded-md text-[10px] font-bold text-slate-400 hover:text-slate-100 transition-colors cursor-pointer"
+              onClick={handleLogout}
+              className="flex items-center gap-1 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-3 py-1.5 rounded-xl text-xxs font-bold text-rose-400 transition-all cursor-pointer"
+              title="ออกจากระบบ"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              ล้างสถิติทั้งหมด
+              <LogOut className="w-3.5 h-3.5" />
+              ออก
             </button>
           </div>
         </div>
@@ -249,6 +378,64 @@ export default function App() {
       {/* Main Workspace Layout */}
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex flex-col gap-6">
         
+        {/* Admin Impersonating / Simulation alert */}
+        {currentUser.username === 'admin' && impersonatingUser && (
+          <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-indigo-300">
+                  คุณกำลังสวมบทบาทเป็น MT5 ID #{impersonatingUser}
+                </h4>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  คุณสามารถควบคุม ปรับเปลี่ยนค่า หรือตรวจสอบความปลอดภัยของลูกค้ารายนี้ได้ ข้อมูลจะอัพเดทเข้าสู่อีเมล/พอร์ตของลูกค้าโดยตรง
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setImpersonatingUser(null);
+                setViewMode('admin');
+              }}
+              className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-xxs rounded-xl transition-all cursor-pointer animate-pulse"
+            >
+              กลับแผงควบคุมหลัก (Admin Control)
+            </button>
+          </div>
+        )}
+
+        {/* Deposit Unverified Warning Banner for regular customers */}
+        {currentUser.username !== 'admin' && !currentUser.depositVerified && (
+          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-rose-400">
+                  รอยืนยันสิทธิ์การรับสัญญาณเทรดอัตโนมัติ (Waiting Minimum Deposit Verification)
+                </h4>
+                <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                  บัญชี MT5 ของท่านอยู่ระหว่างรอแอดมินยืนยันยอดเงินฝากขั้นต่ำ 3,500 บาท ภายใต้ลิงก์พาร์ทเนอร์ XM กรุณาตรวจสอบให้แน่ใจว่ายอดเงินฝากของท่านพร้อมแล้ว แอดมินจะทำการอนุมัติสิทธิ์ให้ท่านทันที
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2.5 shrink-0 w-full md:w-auto justify-end">
+              <a
+                href="https://www.xmglobal.com/referral?token=MTKcgIwhVPRAksq6hx-X_w"
+                target="_blank"
+                rel="noreferrer referrer"
+                className="px-3.5 py-1.5 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-xxs transition-all flex items-center gap-1 shrink-0"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                ลิงก์พาร์ทเนอร์ XM
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* Metric Cards Banner */}
         <div id="stats-banner" className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <MetricCard
@@ -285,11 +472,11 @@ export default function App() {
           />
           <MetricCard
             id="metric_currentstep"
-            title="ระดับตัวคูณ (Martingale)"
-            value={`ไม้ที่ ${stats.currentStep}`}
-            subtitle={`ขนาดล็อตถัดไป ${(settings.tradeAmount * Math.pow(settings.martingaleMultiplier, stats.currentStep - 1)).toFixed(settings.mode === 'mt5' ? 2 : 1)} ${settings.mode === 'mt5' ? 'Lot' : 'USD'}`}
-            icon={AlertTriangle}
-            color={stats.currentStep > 1 ? 'amber' : 'slate'}
+            title="ระบบบริหารเงินทุน"
+            value="ล็อตคงที่ (Fixed Lot)"
+            subtitle={`ขนาดล็อตปัจจุบัน ${settings.tradeAmount.toFixed(2)} Lot`}
+            icon={ShieldCheck}
+            color="indigo"
           />
         </div>
 
