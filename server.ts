@@ -284,30 +284,69 @@ function getOrCreateCandleHistory(assetId: string): Candle[] {
   return history;
 }
 
-// EMA Calculation
+// EMA and RSI Indicator Calculation for 3-layered Strategy (Dual EMA + V98.3 + Maha-Thep RSI)
 function calculateEMAs(candles: Candle[], shortPeriod: number, longPeriod: number) {
   if (candles.length === 0) return;
-  const kShort = 2 / (shortPeriod + 1);
-  const kLong = 2 / (longPeriod + 1);
-  const trendPeriod = botSettings.v98TrendEma || 200;
-  const kTrend = 2 / (trendPeriod + 1);
 
-  let emaS = candles[0].close;
-  let emaL = candles[0].close;
-  let emaT = candles[0].close;
+  const k13 = 2 / (13 + 1);
+  const k34 = 2 / (34 + 1);
+  const k50 = 2 / (50 + 1);
+  const k200 = 2 / (200 + 1);
 
-  candles[0].emaShort = Number(emaS.toFixed(5));
-  candles[0].emaLong = Number(emaL.toFixed(5));
-  (candles[0] as any).emaTrend = Number(emaT.toFixed(5));
+  let ema13 = candles[0].close;
+  let ema34 = candles[0].close;
+  let ema50 = candles[0].close;
+  let ema200 = candles[0].close;
+
+  candles[0].emaShort = Number(ema13.toFixed(5));
+  candles[0].emaLong = Number(ema34.toFixed(5));
+  (candles[0] as any).ema13 = Number(ema13.toFixed(5));
+  (candles[0] as any).ema34 = Number(ema34.toFixed(5));
+  (candles[0] as any).ema50 = Number(ema50.toFixed(5));
+  (candles[0] as any).ema200 = Number(ema200.toFixed(5));
+  (candles[0] as any).emaTrend = Number(ema200.toFixed(5));
+  (candles[0] as any).rsi2 = 50.0;
 
   for (let i = 1; i < candles.length; i++) {
     const close = candles[i].close;
-    emaS = close * kShort + emaS * (1 - kShort);
-    emaL = close * kLong + emaL * (1 - kLong);
-    emaT = close * kTrend + emaT * (1 - kTrend);
-    candles[i].emaShort = Number(emaS.toFixed(5));
-    candles[i].emaLong = Number(emaL.toFixed(5));
-    (candles[i] as any).emaTrend = Number(emaT.toFixed(5));
+    ema13 = close * k13 + ema13 * (1 - k13);
+    ema34 = close * k34 + ema34 * (1 - k34);
+    ema50 = close * k50 + ema50 * (1 - k50);
+    ema200 = close * k200 + ema200 * (1 - k200);
+
+    candles[i].emaShort = Number(ema13.toFixed(5));
+    candles[i].emaLong = Number(ema34.toFixed(5));
+    (candles[i] as any).ema13 = Number(ema13.toFixed(5));
+    (candles[i] as any).ema34 = Number(ema34.toFixed(5));
+    (candles[i] as any).ema50 = Number(ema50.toFixed(5));
+    (candles[i] as any).ema200 = Number(ema200.toFixed(5));
+    (candles[i] as any).emaTrend = Number(ema200.toFixed(5));
+  }
+
+  // Calculate RSI with period 2 (Maha-Thep Entry)
+  let avgGain = 0;
+  let avgLoss = 0;
+
+  for (let i = 1; i < candles.length; i++) {
+    const change = candles[i].close - candles[i - 1].close;
+    const gain = change > 0 ? change : 0;
+    const loss = change < 0 ? -change : 0;
+
+    if (i === 1) {
+      avgGain = gain;
+      avgLoss = loss;
+    } else {
+      // Smoothed moving average for RSI(2)
+      avgGain = (gain + avgGain) / 2;
+      avgLoss = (loss + avgLoss) / 2;
+    }
+
+    if (avgLoss === 0) {
+      (candles[i] as any).rsi2 = 100.0;
+    } else {
+      const rs = avgGain / avgLoss;
+      (candles[i] as any).rsi2 = Number((100 - (100 / (1 + rs))).toFixed(2));
+    }
   }
 }
 
@@ -382,65 +421,68 @@ function startSimulationLoop() {
       activeCandle.emaShort = Number(activeCandle.emaShort?.toFixed(5) || activeCandle.close.toFixed(5));
       activeCandle.emaLong = Number(activeCandle.emaLong?.toFixed(5) || activeCandle.close.toFixed(5));
       
-      // 2. Perform Crossover and Trade Checks
-      const prevCandle = history[history.length - 2];
-      if (prevCandle && prevCandle.emaShort && prevCandle.emaLong && activeCandle.emaShort && activeCandle.emaLong) {
-        const prevDiff = prevCandle.emaShort - prevCandle.emaLong;
-        const currDiff = activeCandle.emaShort - activeCandle.emaLong;
-        
-        let signal: "CALL" | "PUT" | null = null;
-        if (prevDiff <= 0 && currDiff > 0) {
+      // 2. Perform Indicator Checks for 3-layered Strategy (Dual EMA + V98.3 EMA + Maha-Thep RSI)
+      const ema13 = (activeCandle as any).ema13 || 0;
+      const ema34 = (activeCandle as any).ema34 || 0;
+      const ema50 = (activeCandle as any).ema50 || 0;
+      const ema200 = (activeCandle as any).ema200 || 0;
+      const rsi2 = (activeCandle as any).rsi2 ?? 50;
+
+      let signal: "CALL" | "PUT" | null = null;
+      if (ema50 && ema200 && ema13 && ema34 && rsi2 !== undefined) {
+        // Dual EMA Trend Filter: Buy when EMA50 > 200, Sell when EMA50 < 200
+        // V98.3 EMA (13/34): If EMA13 > 34, Buy only. If EMA13 < 34, Sell only.
+        // Maha-Thep Entry (RSI 2): Buy when RSI(2) <= 10, Sell when RSI(2) >= 90.
+        if (ema50 > ema200 && ema13 > ema34 && rsi2 <= 10) {
           signal = "CALL";
-        } else if (prevDiff >= 0 && currDiff < 0) {
+        } else if (ema50 < ema200 && ema13 < ema34 && rsi2 >= 90) {
           signal = "PUT";
         }
-        
-        if (signal) {
-          checkAndResetDailyLimits();
-          
-          // A. Time Window Filter
-          if (!isWithinTradingWindow()) {
-            addLog("info", `[V98] ข้ามสัญญาณ ${signal} เนื่องจากอยู่นอกเวลาเทรดที่กำหนด (${botSettings.startHour} - ${botSettings.endHour})`);
-            signal = null;
-          }
-          
-          // B. Day Trade Max Trades Limit
-          else if (dailyTradesCount >= (botSettings.dailyTradeLimit ?? 5)) {
-            addLog("info", `[Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงขีดจำกัดจำนวนเทรดต่อวันแล้ว (${botSettings.dailyTradeLimit} ไม้)`);
-            signal = null;
-          }
-          
-          // C. Daily Profit Target Limit
-          else if (dailyProfitLossAccumulated >= getTargetInCurrency(botSettings.dailyProfitTarget ?? 1500, botStats.currency || "USD")) {
-            const convertedTarget = getTargetInCurrency(botSettings.dailyProfitTarget ?? 1500, botStats.currency || "USD");
-            addLog("success", `[Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงเป้าหมายกำไรรายวันแล้ว (+$${dailyProfitLossAccumulated.toFixed(2)} / เป้า $${convertedTarget.toFixed(2)} ${botStats.currency || "USD"})`);
-            signal = null;
-          }
-          
-          // D. Daily Loss Limit
-          else if (dailyProfitLossAccumulated <= -(botSettings.dailyLossLimit ?? 50)) {
-            addLog("error", `[Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงขีดจำกัดขาดทุนรายวันแล้ว (-$${Math.abs(dailyProfitLossAccumulated).toFixed(2)} / ลิมิต $${botSettings.dailyLossLimit})`);
-            signal = null;
-          }
-          
-          // E. V98.3 EMA Trend Alignment Filter (to guarantee loss rate < 5%)
-          if (signal && (botSettings.v98Enabled ?? true)) {
-            const emaTrend = (activeCandle as any).emaTrend;
-            if (emaTrend) {
-              if (signal === "CALL" && activeCandle.close <= emaTrend) {
-                addLog("info", `[V98.3] ปฏิเสธสัญญาณ CALL เนื่องจากแนวโน้มทองคำเป็นขาลง ราคาอยู่ใต้ EMA Trend (${emaTrend}) *กรองกรอบเพื่อความแม่นยำสูง*`);
-                signal = null;
-              } else if (signal === "PUT" && activeCandle.close >= emaTrend) {
-                addLog("info", `[V98.3] ปฏิเสธสัญญาณ PUT เนื่องจากแนวโน้มทองคำเป็นขาขึ้น ราคาอยู่เหนือ EMA Trend (${emaTrend}) *กรองกรอบเพื่อความแม่นยำสูง*`);
-                signal = null;
-              }
-            }
-          }
+      }
 
-          if (signal) {
-            executeSimulatedTrade(signal, activeCandle.close, asset);
-          }
+      // Check if there is already a pending trade for this asset
+      const hasPending = trades.some(t => t.status === "PENDING" && t.asset === asset.name);
+      if (hasPending && signal) {
+        addLog("info", `[ระบบอัจฉริยะ] มีออร์เดอร์ที่ยังไม่ปิดของ ${asset.name} ข้ามสัญญาณ ${signal} ชั่วคราวเพื่อความปลอดภัยสูงสุด`);
+        signal = null;
+      }
+
+      if (signal) {
+        checkAndResetDailyLimits();
+        
+        // A. Time Window Filter
+        if (!isWithinTradingWindow()) {
+          addLog("info", `[Maha-Thep] ข้ามสัญญาณ ${signal} เนื่องจากอยู่นอกเวลาเทรดที่กำหนด (${botSettings.startHour} - ${botSettings.endHour})`);
+          signal = null;
         }
+        
+        // B. Day Trade Max Trades Limit
+        else if (dailyTradesCount >= (botSettings.dailyTradeLimit ?? 5)) {
+          addLog("info", `[Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงขีดจำกัดจำนวนเทรดต่อวันแล้ว (${botSettings.dailyTradeLimit} ไม้)`);
+          signal = null;
+        }
+        
+        // C. Daily Profit Target Limit
+        else if (dailyProfitLossAccumulated >= getTargetInCurrency(botSettings.dailyProfitTarget ?? 1500, botStats.currency || "USD")) {
+          const convertedTarget = getTargetInCurrency(botSettings.dailyProfitTarget ?? 1500, botStats.currency || "USD");
+          addLog("success", `[Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงเป้าหมายกำไรรายวันแล้ว (+$${dailyProfitLossAccumulated.toFixed(2)} / เป้า $${convertedTarget.toFixed(2)} ${botStats.currency || "USD"})`);
+          signal = null;
+        }
+        
+        // D. Daily Loss Limit
+        else if (dailyProfitLossAccumulated <= -(botSettings.dailyLossLimit ?? 50)) {
+          addLog("error", `[Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงขีดจำกัดขาดทุนรายวันแล้ว (-$${Math.abs(dailyProfitLossAccumulated).toFixed(2)} / ลิมิต $${botSettings.dailyLossLimit})`);
+          signal = null;
+        }
+        
+        // E. Extra Logging for alignment verification
+        if (signal) {
+          addLog("success", `[Maha-Thep] สัญญาณ ${signal} ผ่านการกรอง 3 ชั้นเรียบร้อย! (EMA50/200 & EMA13/34 & RSI2)`);
+        }
+      }
+
+      if (signal) {
+        executeSimulatedTrade(signal, activeCandle.close, asset);
       }
       
       // 3. Resolve any pending trades that expire at this candle's close
@@ -700,135 +742,139 @@ app.post("/api/mt5/tick", (req, res) => {
       activeCandle.emaShort = Number(activeCandle.emaShort?.toFixed(5) || activeCandle.close.toFixed(5));
       activeCandle.emaLong = Number(activeCandle.emaLong?.toFixed(5) || activeCandle.close.toFixed(5));
 
-      // Trigger Crossover check on candle close
+      // Trigger Indicator check on candle close (3-layered strategy)
       if (s_settings.isActive && s_settings.mode === "mt5" && (!activeUser || activeUser.depositVerified)) {
-        const prevCandle = history[history.length - 2];
-        if (prevCandle && prevCandle.emaShort && prevCandle.emaLong && activeCandle.emaShort && activeCandle.emaLong) {
-          const prevDiff = prevCandle.emaShort - prevCandle.emaLong;
-          const currDiff = activeCandle.emaShort - activeCandle.emaLong;
+        const ema13 = (activeCandle as any).ema13 || 0;
+        const ema34 = (activeCandle as any).ema34 || 0;
+        const ema50 = (activeCandle as any).ema50 || 0;
+        const ema200 = (activeCandle as any).ema200 || 0;
+        const rsi2 = (activeCandle as any).rsi2 ?? 50;
 
-          let signal: "CALL" | "PUT" | null = null;
-          if (prevDiff <= 0 && currDiff > 0) {
+        let signal: "CALL" | "PUT" | null = null;
+        if (ema50 && ema200 && ema13 && ema34 && rsi2 !== undefined) {
+          // Dual EMA Trend Filter: Buy when EMA50 > 200, Sell when EMA50 < 200
+          // V98.3 EMA (13/34): If EMA13 > 34, Buy only. If EMA13 < 34, Sell only.
+          // Maha-Thep Entry (RSI 2): Buy when RSI(2) <= 10, Sell when RSI(2) >= 90.
+          if (ema50 > ema200 && ema13 > ema34 && rsi2 <= 10) {
             signal = "CALL";
-          } else if (prevDiff >= 0 && currDiff < 0) {
+          } else if (ema50 < ema200 && ema13 < ema34 && rsi2 >= 90) {
             signal = "PUT";
+          }
+        }
+
+        // Check if there is already a pending trade
+        const s_trades = activeUser ? activeUser.trades : trades;
+        const hasPending = s_trades.some(t => t.status === "PENDING" && t.asset === supportedAsset.name);
+        if (hasPending && signal) {
+          addUserLog(s_username, "info", `[ระบบอัจฉริยะ] มีออร์เดอร์ที่ยังไม่ปิดของ ${supportedAsset.name} ข้ามสัญญาณ ${signal} ชั่วคราวเพื่อความปลอดภัยสูงสุด`);
+          signal = null;
+        }
+
+        if (signal) {
+          // Check daily limits per user or globally
+          let s_dailyTradesCount = activeUser ? activeUser.dailyTradesCount : dailyTradesCount;
+          let s_dailyProfitLossAccumulated = activeUser ? activeUser.dailyProfitLossAccumulated : dailyProfitLossAccumulated;
+
+          const startStr = s_settings.startHour || "13:00";
+          const endStr = s_settings.endHour || "22:00";
+          
+          const nowTime = new Date();
+          const currentMinutes = nowTime.getUTCHours() * 60 + nowTime.getUTCMinutes();
+          
+          const parseMinutes = (timeStr: string) => {
+            const parts = timeStr.split(":");
+            const h = parseInt(parts[0], 10) || 0;
+            const m = parseInt(parts[1], 10) || 0;
+            return h * 60 + m;
+          };
+          
+          const startMin = parseMinutes(startStr);
+          const endMin = parseMinutes(endStr);
+          
+          let withinWindow = false;
+          if (startMin <= endMin) {
+            withinWindow = currentMinutes >= startMin && currentMinutes <= endMin;
+          } else {
+            withinWindow = currentMinutes >= startMin || currentMinutes <= endMin;
+          }
+
+          // A. Time Window Filter
+          if (!withinWindow) {
+            addUserLog(s_username, "info", `[Maha-Thep] ข้ามสัญญาณ ${signal} เนื่องจากอยู่นอกเวลาเทรดที่กำหนด (${s_settings.startHour} - ${s_settings.endHour})`);
+            signal = null;
+          }
+
+          // B. Day Trade Max Trades Limit
+          else if (s_dailyTradesCount >= (s_settings.dailyTradeLimit ?? 5)) {
+            addUserLog(s_username, "info", `[MT5 - Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงขีดจำกัดจำนวนไม้ต่อวันแล้ว (${s_settings.dailyTradeLimit} ไม้)`);
+            signal = null;
+          }
+
+          // C. Daily Profit Target Limit
+          else if (s_dailyProfitLossAccumulated >= getTargetInCurrency(s_settings.dailyProfitTarget ?? 1500, s_stats.currency || "USD")) {
+            const cur = s_stats.currency || "USD";
+            const convertedTarget = getTargetInCurrency(s_settings.dailyProfitTarget ?? 1500, cur);
+            addUserLog(s_username, "success", `[MT5 - Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงเป้าหมายกำไรรายวันแล้ว (+${s_dailyProfitLossAccumulated.toFixed(2)} ${cur} / เป้า ${convertedTarget.toFixed(2)} ${cur})`);
+            signal = null;
+          }
+
+          // D. Daily Loss Limit
+          else if (s_dailyProfitLossAccumulated <= -(s_settings.dailyLossLimit ?? 50)) {
+            const cur = s_stats.currency || "USD";
+            addUserLog(s_username, "error", `[MT5 - Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงขีดจำกัดขาดทุนรายวันสูงสุดแล้ว (-${Math.abs(s_dailyProfitLossAccumulated).toFixed(2)} ${cur} / ลิมิต ${s_settings.dailyLossLimit} ${cur})`);
+            signal = null;
+          }
+
+          // E. Extra Logging for alignment verification
+          if (signal) {
+            addUserLog(s_username, "success", `[Maha-Thep] สัญญาณ ${signal} ผ่านการกรอง 3 ชั้นเรียบร้อย! (EMA50/200 & EMA13/34 & RSI2)`);
           }
 
           if (signal) {
-            // Check daily limits per user or globally
-            let s_dailyTradesCount = activeUser ? activeUser.dailyTradesCount : dailyTradesCount;
-            let s_dailyProfitLossAccumulated = activeUser ? activeUser.dailyProfitLossAccumulated : dailyProfitLossAccumulated;
-
-            const startStr = s_settings.startHour || "13:00";
-            const endStr = s_settings.endHour || "22:00";
-            
-            const nowTime = new Date();
-            const currentMinutes = nowTime.getUTCHours() * 60 + nowTime.getUTCMinutes();
-            
-            const parseMinutes = (timeStr: string) => {
-              const parts = timeStr.split(":");
-              const h = parseInt(parts[0], 10) || 0;
-              const m = parseInt(parts[1], 10) || 0;
-              return h * 60 + m;
-            };
-            
-            const startMin = parseMinutes(startStr);
-            const endMin = parseMinutes(endStr);
-            
-            let withinWindow = false;
-            if (startMin <= endMin) {
-              withinWindow = currentMinutes >= startMin && currentMinutes <= endMin;
+            if (activeUser) {
+              activeUser.dailyTradesCount++;
             } else {
-              withinWindow = currentMinutes >= startMin || currentMinutes <= endMin;
+              dailyTradesCount++;
             }
+            const step = 1; // Martingale disabled, step is always 1
+            const lotSize = s_settings.tradeAmount;
+            const tradeId = Math.random().toString(36).substring(2, 9);
 
-            // A. Time Window Filter
-            if (!withinWindow) {
-              addUserLog(s_username, "info", `[MT5] ข้ามสัญญาณ ${signal} เนื่องจากอยู่นอกเวลาเทรดที่กำหนด (${s_settings.startHour} - ${s_settings.endHour})`);
-              signal = null;
-            }
+            mt5PendingSignals.set(supportedAsset.id, {
+              type: signal,
+              lotSize: Number(lotSize.toFixed(3)) || 0.01,
+              tradeId,
+              timestamp: Date.now()
+            });
 
-            // B. Day Trade Max Trades Limit
-            else if (s_dailyTradesCount >= (s_settings.dailyTradeLimit ?? 5)) {
-              addUserLog(s_username, "info", `[MT5 - Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงขีดจำกัดจำนวนไม้ต่อวันแล้ว (${s_settings.dailyTradeLimit} ไม้)`);
-              signal = null;
-            }
+            // Log pending trade on server
+            const expiryString = new Date(Date.now() + 60000).toLocaleTimeString();
+            const newTrade: Trade = {
+              id: tradeId,
+              timestamp: new Date().toLocaleTimeString(),
+              type: signal,
+              amount: lotSize,
+              entryPrice: activeCandle.close,
+              exitPrice: null,
+              status: "PENDING",
+              martingaleStep: step,
+              expiryTime: expiryString,
+              profit: null,
+              asset: supportedAsset.name
+            };
 
-            // C. Daily Profit Target Limit
-            else if (s_dailyProfitLossAccumulated >= getTargetInCurrency(s_settings.dailyProfitTarget ?? 1500, s_stats.currency || "USD")) {
-              const cur = s_stats.currency || "USD";
-              const convertedTarget = getTargetInCurrency(s_settings.dailyProfitTarget ?? 1500, cur);
-              addUserLog(s_username, "success", `[MT5 - Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงเป้าหมายกำไรรายวันแล้ว (+${s_dailyProfitLossAccumulated.toFixed(2)} ${cur} / เป้า ${convertedTarget.toFixed(2)} ${cur})`);
-              signal = null;
-            }
+            s_trades.unshift(newTrade);
+            if (s_trades.length > 50) s_trades.pop();
 
-            // D. Daily Loss Limit
-            else if (s_dailyProfitLossAccumulated <= -(s_settings.dailyLossLimit ?? 50)) {
-              const cur = s_stats.currency || "USD";
-              addUserLog(s_username, "error", `[MT5 - Day Trade] ข้ามสัญญาณ ${signal} เนื่องจากถึงขีดจำกัดขาดทุนรายวันสูงสุดแล้ว (-${Math.abs(s_dailyProfitLossAccumulated).toFixed(2)} ${cur} / ลิมิต ${s_settings.dailyLossLimit} ${cur})`);
-              signal = null;
-            }
-
-            // E. V98.3 EMA Trend Alignment Filter (to guarantee loss rate < 5%)
-            if (signal && (s_settings.v98Enabled ?? true)) {
-              const emaTrend = (activeCandle as any).emaTrend;
-              if (emaTrend) {
-                if (signal === "CALL" && activeCandle.close <= emaTrend) {
-                  addUserLog(s_username, "info", `[MT5 - V98.3] ปฏิเสธสัญญาณ CALL เนื่องจากแนวโน้มทองคำเป็นขาลง ราคาอยู่ใต้ EMA Trend (${emaTrend}) *กรองกรอบเพื่อความแม่นยำสูง*`);
-                  signal = null;
-                } else if (signal === "PUT" && activeCandle.close >= emaTrend) {
-                  addUserLog(s_username, "info", `[MT5 - V98.3] ปฏิเสธสัญญาณ PUT เนื่องจากแนวโน้มทองคำเป็นขาขึ้น ราคาอยู่เหนือ EMA Trend (${emaTrend}) *กรองกรอบเพื่อความแม่นยำสูง*`);
-                  signal = null;
-                }
-              }
-            }
-
-            if (signal) {
-              if (activeUser) {
-                activeUser.dailyTradesCount++;
-              } else {
-                dailyTradesCount++;
-              }
-              const step = 1; // Martingale disabled, step is always 1
-              const lotSize = s_settings.tradeAmount;
-              const tradeId = Math.random().toString(36).substring(2, 9);
-
-              mt5PendingSignals.set(supportedAsset.id, {
-                type: signal,
-                lotSize: Number(lotSize.toFixed(3)) || 0.01,
-                tradeId,
-                timestamp: Date.now()
-              });
-
-              // Log pending trade on server
-              const expiryString = new Date(Date.now() + 60000).toLocaleTimeString();
-              const newTrade: Trade = {
-                id: tradeId,
-                timestamp: new Date().toLocaleTimeString(),
-                type: signal,
-                amount: lotSize,
-                entryPrice: price,
-                exitPrice: null,
-                status: "PENDING",
-                martingaleStep: step,
-                expiryTime: expiryString,
-                profit: null,
-                asset: supportedAsset.name
-              };
-
-              s_trades.unshift(newTrade);
-              if (s_trades.length > 50) s_trades.pop();
-
-              addUserLog(s_username, "trade", `[MT5] สัญญาณ ${signal} (${supportedAsset.name}) ขนาด ${lotSize.toFixed(2)} Lot (ล็อตคงที่) รอให้ EA ใน MT5 เปิดออร์เดอร์`);
-              
-              if (activeUser) {
-                userBroadcast(s_username, { type: "trade_placed", data: newTrade });
-                userBroadcast(s_username, { type: "trades", data: s_trades });
-                saveUsers();
-              } else {
-                broadcast({ type: "trade_placed", data: newTrade });
-                broadcast({ type: "trades", data: s_trades });
-              }
+            addUserLog(s_username, "trade", `[MT5] สัญญาณ ${signal} (${supportedAsset.name}) ขนาด ${lotSize.toFixed(2)} Lot (ล็อตคงที่) รอให้ EA ใน MT5 เปิดออร์เดอร์`);
+            
+            if (activeUser) {
+              userBroadcast(s_username, { type: "trade_placed", data: newTrade });
+              userBroadcast(s_username, { type: "trades", data: s_trades });
+              saveUsers();
+            } else {
+              broadcast({ type: "trade_placed", data: newTrade });
+              broadcast({ type: "trades", data: s_trades });
             }
           }
         }
