@@ -258,8 +258,11 @@ export const BotControls: React.FC<BotControlsProps> = ({
             </div>
           </div>
         )}
-        <div className="text-[10px] text-slate-500 leading-normal">
-          💡 <span className="text-slate-400 font-semibold">สูตรลับ V98.3:</span> บอทจะทำการตรวจสอบ <strong className="text-indigo-300">EMA {settings.emaShort}/{settings.emaLong}</strong> แต่จะออกออร์เดอร์ก็ต่อเมื่อราคาสอดคล้องกับแนวโน้มหลักของ <strong className="text-indigo-300">EMA {settings.v98TrendEma ?? 200}</strong> เท่านั้น พร้อมควบคุมเวลาเทรดช่วงตลาดลอนดอน/นิวยอร์กที่มีสภาพคล่องและสเปรดต่ำ ช่วยกรองสัญญาณหลอกได้อย่างแม่นยำ
+        <div className="text-[10px] text-slate-400 leading-normal flex flex-col gap-1 bg-indigo-950/20 p-2.5 rounded-lg border border-indigo-500/10">
+          <div className="text-xs font-bold text-indigo-300">💡 ระบบออกออร์เดอร์เมื่อครบ 3 เทคนิคพร้อมกัน (100% Signal Match):</div>
+          <div>1. <strong className="text-emerald-400">Dual EMA Trend Filter:</strong> กรองเทรนด์หลัก (Buy เมื่อ EMA 50 &gt; 200, Sell เมื่อ EMA 50 &lt; 200)</div>
+          <div>2. <strong className="text-emerald-400">V98.3 EMA (13/34):</strong> ระบุทิศทางความได้เปรียบ (Buy เมื่อ EMA 13 &gt; 34, Sell เมื่อ EMA 13 &lt; 34)</div>
+          <div>3. <strong className="text-emerald-400">Maha-Thep Entry (RSI 2):</strong> จังหวะราคาโอเวอร์ย่อ ยืนยันการดีดกลับ (Buy เมื่อ RSI 2 &le; 10, Sell เมื่อ RSI 2 &ge; 90)</div>
         </div>
       </div>
 
